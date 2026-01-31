@@ -129,7 +129,7 @@ interface RedditPost {
 }
 
 async function fetchSubreddit(token: string, subreddit: string): Promise<RedditPost[]> {
-  const response = await fetch(`https://oauth.reddit.com/r/${subreddit}/new?limit=25`, {
+  const response = await fetch(`https://oauth.reddit.com/r/${subreddit}/new?limit=50`, {
     headers: {
       "Authorization": `Bearer ${token}`,
       "User-Agent": "MuseDungeon/1.0",
@@ -142,7 +142,11 @@ async function fetchSubreddit(token: string, subreddit: string): Promise<RedditP
   }
 
   const data = await response.json();
-  return data.data.children.map((child: { data: RedditPost }) => child.data);
+  const posts = data.data.children.map((child: { data: RedditPost }) => child.data);
+
+  // Filter to last 24 hours only
+  const oneDayAgo = Date.now() / 1000 - 24 * 60 * 60;
+  return posts.filter((post: RedditPost) => post.created_utc > oneDayAgo);
 }
 
 export async function GET() {
@@ -188,7 +192,15 @@ export async function GET() {
       .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
       .slice(0, 20);
 
-    return NextResponse.json({ posts: results });
+    return NextResponse.json({
+      posts: results,
+      museDungeonPages: museDungeonPages.map(p => ({
+        name: p.name,
+        url: `https://musedungeon.com${p.url}`,
+        type: p.type,
+        keywords: p.keywords,
+      })),
+    });
   } catch (error) {
     console.error("Reddit API error:", error);
     return NextResponse.json(
