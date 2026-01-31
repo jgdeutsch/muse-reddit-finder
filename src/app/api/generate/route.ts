@@ -104,22 +104,23 @@ export async function POST(request: Request) {
       .replace(/^-|-$/g, "")
       .slice(0, 60);
 
-    // Clean the title
-    const cleanedTitle = cleanTitle(title);
+    // Paraphrase the question and generate a clean title
+    const paraphrasedQ = paraphraseQuestion(title, selftext);
+    const pageTitle = generatePageTitle(paraphrasedQ, allRelevantPages);
 
     // Determine category
     const category = determineCategory(title, selftext, subreddit, pageTypes);
 
-    // Generate sections
-    const sections = generateSections(cleanedTitle, selftext, allRelevantPages);
+    // Generate sections with first-person DM voice
+    const sections = generateSections(pageTitle, selftext, allRelevantPages);
 
     // Build the AnswerPage object
     const answerPage: AnswerPage = {
       slug,
-      title: cleanedTitle,
-      question: title,
+      title: pageTitle,
+      question: paraphrasedQ,
       category,
-      description: `Comprehensive answer to: ${cleanedTitle.slice(0, 150)}`,
+      description: `My take on a common D&D 5e question: ${pageTitle.slice(0, 120)}`,
       sections,
       relatedPages: allRelevantPages.map((p) => ({
         name: p.name,
@@ -213,14 +214,14 @@ function generateSections(
     pagesByType[page.type].push(page);
   }
 
-  // Introduction section
+  // Introduction section - first person DM voice
   sections.push({
     id: "introduction",
     title: "Quick Answer",
-    content: `This guide addresses a common D&D 5e question about ${relevantPages
+    content: `I see this question come up a lot in my games and online communities. It touches on ${relevantPages
       .map((p) => p.name.toLowerCase())
       .slice(0, 3)
-      .join(", ")}${relevantPages.length > 3 ? " and more" : ""}. Here's what you need to know.`,
+      .join(", ")}${relevantPages.length > 3 ? " and more" : ""}. Let me break down how I handle this at my table.`,
   });
 
   // The original question if available
@@ -228,11 +229,11 @@ function generateSections(
     sections.push({
       id: "original-question",
       title: "The Question",
-      content: selftext.slice(0, 800) + (selftext.length > 800 ? "..." : ""),
+      content: `Here's the full context of what was asked:\n\n> ${selftext.slice(0, 800).replace(/\n/g, "\n> ")}${selftext.length > 800 ? "..." : ""}`,
     });
   }
 
-  // Class mechanics section
+  // Class mechanics section - first person DM voice
   if (pagesByType["Class"]) {
     sections.push({
       id: "class-mechanics",
@@ -240,13 +241,13 @@ function generateSections(
       content: pagesByType["Class"]
         .map(
           (page) =>
-            `The **${page.name}** class has specific rules that apply here. Check out our comprehensive [${page.name} guide](https://musedungeon.com${page.url}) for all the details on class features, subclasses, and build optimization.`
+            `When it comes to the **${page.name}**, I always refer players to my [${page.name} guide](https://musedungeon.com${page.url}). I've put together everything you need to know about the class features, subclass options, and how to build an effective character.`
         )
         .join("\n\n"),
     });
   }
 
-  // Features section
+  // Features section - first person DM voice
   if (pagesByType["Feature"]) {
     sections.push({
       id: "relevant-features",
@@ -254,13 +255,13 @@ function generateSections(
       content: pagesByType["Feature"]
         .map(
           (page) =>
-            `**[${page.name}](https://musedungeon.com${page.url})** is a key feature to understand for this question. Our guide covers exactly how it works, when you can use it, and common rulings.`
+            `**[${page.name}](https://musedungeon.com${page.url})** is something I've had to rule on many times. In my guide, I explain exactly how it works RAW (Rules As Written) and share how I typically rule on edge cases at my table.`
         )
         .join("\n\n"),
     });
   }
 
-  // Rules & Conditions section
+  // Rules & Conditions section - first person DM voice
   const rulesAndConditions = [
     ...(pagesByType["Rule"] || []),
     ...(pagesByType["Condition"] || []),
@@ -272,13 +273,13 @@ function generateSections(
       content: rulesAndConditions
         .map(
           (page) =>
-            `Understanding **[${page.name}](https://musedungeon.com${page.url})** is essential here. This covers the official rules and how they interact with other game mechanics.`
+            `Understanding **[${page.name}](https://musedungeon.com${page.url})** is crucial here. I've broken down the official rules and explained how they interact with other mechanics. This is one of those areas where I've seen a lot of table variation, so I try to cover both RAW and common house rules.`
         )
         .join("\n\n"),
     });
   }
 
-  // Spells section
+  // Spells section - first person DM voice
   if (pagesByType["Spell"]) {
     sections.push({
       id: "spells",
@@ -286,13 +287,13 @@ function generateSections(
       content: pagesByType["Spell"]
         .map(
           (page) =>
-            `**[${page.name}](https://musedungeon.com${page.url})** - See our spell guide for casting time, range, components, and important rulings.`
+            `**[${page.name}](https://musedungeon.com${page.url})** — I've written up a full breakdown including casting time, range, components, and my rulings on common questions players ask about this spell.`
         )
         .join("\n\n"),
     });
   }
 
-  // Races section
+  // Races section - first person DM voice
   if (pagesByType["Race"]) {
     sections.push({
       id: "racial-considerations",
@@ -300,13 +301,13 @@ function generateSections(
       content: pagesByType["Race"]
         .map(
           (page) =>
-            `The **[${page.name}](https://musedungeon.com${page.url})** race has unique traits that may affect this situation. Check our race guide for all racial features and lore.`
+            `The **[${page.name}](https://musedungeon.com${page.url})** has some unique traits that come into play here. I cover all the racial features, ability score bonuses, and lore in my race guide — it's one of the more popular picks I see at my tables.`
         )
         .join("\n\n"),
     });
   }
 
-  // Feats section
+  // Feats section - first person DM voice
   if (pagesByType["Feat"]) {
     sections.push({
       id: "feats",
@@ -314,7 +315,7 @@ function generateSections(
       content: pagesByType["Feat"]
         .map(
           (page) =>
-            `**[${page.name}](https://musedungeon.com${page.url})** may be relevant to your question. See our feat guide for prerequisites, benefits, and build synergies.`
+            `**[${page.name}](https://musedungeon.com${page.url})** is relevant here. In my feat guide, I go over the prerequisites, exactly what you get, and which builds synergize best with it. I also share my thoughts on when it's worth taking versus other options.`
         )
         .join("\n\n"),
     });
@@ -334,14 +335,14 @@ function generateMarkdownPreview(answerPage: AnswerPage): string {
   }
 
   content += `## Related Resources\n\n`;
-  content += `Here are all the MuseDungeon guides that can help with this topic:\n\n`;
+  content += `Here are my other guides that can help with this topic:\n\n`;
 
   for (const page of answerPage.relatedPages) {
     content += `- **[${page.name}](https://musedungeon.com${page.url})** (${page.type})\n`;
   }
 
   content += `\n---\n\n`;
-  content += `*Have more D&D 5e questions? Browse our [complete guides](https://musedungeon.com) for rules, classes, spells, and more.*\n`;
+  content += `*Have more D&D 5e questions? Browse my [complete guides](https://musedungeon.com) for rules, classes, spells, and more. I'm always adding new content based on questions I see in the community.*\n`;
 
   return content;
 }
@@ -352,4 +353,73 @@ function cleanTitle(title: string): string {
     .replace(/^(Question|Help|Rule|Rules):\s*/i, "")
     .replace(/\?+$/, "?")
     .trim();
+}
+
+// Paraphrase a Reddit question into a cleaner, more general form
+function paraphraseQuestion(title: string, selftext: string): string {
+  let q = cleanTitle(title);
+
+  // Remove personal pronouns and make it more general
+  q = q
+    .replace(/\bmy\b/gi, "a")
+    .replace(/\bI\b/g, "you")
+    .replace(/\bI'm\b/gi, "you're")
+    .replace(/\bI've\b/gi, "you've")
+    .replace(/\bme\b/gi, "you")
+    .replace(/\bour\b/gi, "the")
+    .replace(/\bwe\b/gi, "players")
+    .replace(/\bmy player('s)?\b/gi, "a player's")
+    .replace(/\bmy DM\b/gi, "the DM")
+    .replace(/\bin my game\b/gi, "in a game")
+    .replace(/\bin my campaign\b/gi, "in a campaign");
+
+  // Clean up awkward phrasing
+  q = q
+    .replace(/\s+/g, " ")
+    .replace(/^(So|Hey|Hi|Hello|Ok so|Okay so),?\s*/i, "")
+    .replace(/\s*\?\s*$/, "?")
+    .trim();
+
+  // Ensure it ends with a question mark if it's a question
+  if (!q.endsWith("?") && (
+    q.toLowerCase().startsWith("how") ||
+    q.toLowerCase().startsWith("what") ||
+    q.toLowerCase().startsWith("can") ||
+    q.toLowerCase().startsWith("does") ||
+    q.toLowerCase().startsWith("do") ||
+    q.toLowerCase().startsWith("is") ||
+    q.toLowerCase().startsWith("are") ||
+    q.toLowerCase().startsWith("why") ||
+    q.toLowerCase().startsWith("when") ||
+    q.toLowerCase().startsWith("which")
+  )) {
+    q = q + "?";
+  }
+
+  return q;
+}
+
+// Generate a SEO-friendly title from the paraphrased question
+function generatePageTitle(paraphrasedQuestion: string, relevantPages: MuseDungeonPage[]): string {
+  // If the question is already short and clear, use it
+  if (paraphrasedQuestion.length < 60) {
+    return paraphrasedQuestion;
+  }
+
+  // Otherwise, try to create a shorter title based on the main topic
+  const mainTopic = relevantPages[0]?.name || "";
+  if (mainTopic) {
+    // Extract the core question type
+    const lowerQ = paraphrasedQuestion.toLowerCase();
+    if (lowerQ.includes("how does") || lowerQ.includes("how do")) {
+      return `How Does ${mainTopic} Work in D&D 5e?`;
+    }
+    if (lowerQ.includes("can you") || lowerQ.includes("can i")) {
+      return `Can You Use ${mainTopic} in D&D 5e?`;
+    }
+    return `${mainTopic} Rules Explained — D&D 5e`;
+  }
+
+  // Truncate if too long
+  return paraphrasedQuestion.slice(0, 57) + "...";
 }
