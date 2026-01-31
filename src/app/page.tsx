@@ -9,6 +9,18 @@ interface MuseDungeonMatch {
   keywords?: string[];
 }
 
+interface AnswerPage {
+  slug: string;
+  title: string;
+  question: string;
+  category: string;
+  description: string;
+  sections: { id: string; title: string; content: string }[];
+  relatedPages: { name: string; url: string; type: string }[];
+  sourceUrl?: string;
+  createdAt: string;
+}
+
 interface RedditPost {
   title: string;
   url: string;
@@ -23,8 +35,19 @@ interface RedditPost {
 
 interface GeneratedPage {
   slug: string;
+  category: string;
   content: string;
+  answerPage: AnswerPage;
   relevantPages: MuseDungeonMatch[];
+  writtenToFile: boolean;
+  museDungeonUrl: string;
+}
+
+interface DeployStatus {
+  deployed: boolean;
+  deploying: boolean;
+  error: string | null;
+  commitUrl: string | null;
 }
 
 function timeAgo(dateString: string): string {
@@ -51,6 +74,16 @@ function getTypeColor(type: string): string {
   return colors[type] || "#888";
 }
 
+function getCategoryColor(category: string): string {
+  const colors: Record<string, string> = {
+    rules: "#4f46e5",
+    "character-building": "#059669",
+    mechanics: "#dc2626",
+    "dm-advice": "#9333ea",
+  };
+  return colors[category] || "#666";
+}
+
 export default function Home() {
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [allPages, setAllPages] = useState<MuseDungeonMatch[]>([]);
@@ -59,6 +92,13 @@ export default function Home() {
   const [generating, setGenerating] = useState<string | null>(null);
   const [generatedPage, setGeneratedPage] = useState<GeneratedPage | null>(null);
   const [selectedPost, setSelectedPost] = useState<RedditPost | null>(null);
+  const [copySuccess, setCopySuccess] = useState<string | null>(null);
+  const [deployStatus, setDeployStatus] = useState<DeployStatus>({
+    deployed: false,
+    deploying: false,
+    error: null,
+    commitUrl: null,
+  });
 
   useEffect(() => {
     async function fetchPosts() {
@@ -110,14 +150,60 @@ export default function Home() {
     }
   }
 
-  function copyToClipboard(text: string) {
+  function copyToClipboard(text: string, label: string) {
     navigator.clipboard.writeText(text);
-    alert("Copied to clipboard!");
+    setCopySuccess(label);
+    setTimeout(() => setCopySuccess(null), 2000);
   }
 
   function closeModal() {
     setGeneratedPage(null);
     setSelectedPost(null);
+    setCopySuccess(null);
+    setDeployStatus({ deployed: false, deploying: false, error: null, commitUrl: null });
+  }
+
+  async function deployToMuseDungeon() {
+    if (!generatedPage) return;
+
+    setDeployStatus({ deployed: false, deploying: true, error: null, commitUrl: null });
+
+    try {
+      const response = await fetch("/api/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answerPage: generatedPage.answerPage }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Deployment failed");
+      }
+
+      if (data.alreadyExists) {
+        setDeployStatus({
+          deployed: true,
+          deploying: false,
+          error: null,
+          commitUrl: null,
+        });
+      } else {
+        setDeployStatus({
+          deployed: true,
+          deploying: false,
+          error: null,
+          commitUrl: data.commitUrl,
+        });
+      }
+    } catch (err) {
+      setDeployStatus({
+        deployed: false,
+        deploying: false,
+        error: err instanceof Error ? err.message : "Deployment failed",
+        commitUrl: null,
+      });
+    }
   }
 
   return (
@@ -212,7 +298,7 @@ export default function Home() {
                       color: "#fff",
                     }}
                   >
-                    {generating === post.url ? "Generating..." : "Generate Answer"}
+                    {generating === post.url ? "Generating..." : "Create Page"}
                   </button>
                 </div>
 
@@ -268,21 +354,38 @@ export default function Home() {
                 style={{ borderBottom: "1px solid var(--border)" }}
               >
                 <div>
-                  <h2 className="font-bold text-lg" style={{ color: "var(--accent)" }}>
-                    Generated Answer Page
-                  </h2>
+                  <div className="flex items-center gap-3 mb-1">
+                    <h2 className="font-bold text-lg" style={{ color: "var(--accent)" }}>
+                      {generatedPage.writtenToFile ? "Page Created!" : "Page Generated"}
+                    </h2>
+                    <span
+                      className="px-2 py-0.5 rounded text-xs font-medium"
+                      style={{
+                        backgroundColor: getCategoryColor(generatedPage.category),
+                        color: "#fff",
+                      }}
+                    >
+                      {generatedPage.category}
+                    </span>
+                    {generatedPage.writtenToFile && (
+                      <span
+                        className="px-2 py-0.5 rounded text-xs font-medium"
+                        style={{ backgroundColor: "#059669", color: "#fff" }}
+                      >
+                        Saved to MuseDungeon
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs opacity-60">
-                    Slug: /answers/{generatedPage.slug}
+                    URL: {generatedPage.museDungeonUrl}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => copyToClipboard(generatedPage.content)}
-                    className="px-3 py-1.5 rounded text-sm font-medium"
-                    style={{ backgroundColor: "var(--green)", color: "#fff" }}
-                  >
-                    Copy Markdown
-                  </button>
+                  {copySuccess && (
+                    <span className="text-xs text-green-500 px-2 py-1.5">
+                      Copied {copySuccess}!
+                    </span>
+                  )}
                   <button
                     onClick={closeModal}
                     className="px-3 py-1.5 rounded text-sm font-medium"
@@ -295,6 +398,90 @@ export default function Home() {
 
               {/* Modal Content */}
               <div className="flex-1 overflow-y-auto p-6">
+                {/* Deploy Button / Status */}
+                {deployStatus.deployed ? (
+                  <div
+                    className="mb-6 p-4 rounded-lg"
+                    style={{
+                      backgroundColor: "rgba(5, 150, 105, 0.1)",
+                      border: "1px solid #059669",
+                    }}
+                  >
+                    <p className="font-semibold" style={{ color: "#059669" }}>
+                      Deployed to MuseDungeon!
+                    </p>
+                    <p className="text-sm opacity-70 mt-1">
+                      The page will be live at{" "}
+                      <a
+                        href={generatedPage.museDungeonUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline"
+                        style={{ color: "#059669" }}
+                      >
+                        {generatedPage.museDungeonUrl}
+                      </a>{" "}
+                      within 1-2 minutes after Vercel finishes deploying.
+                    </p>
+                    {deployStatus.commitUrl && (
+                      <p className="text-sm opacity-70 mt-1">
+                        <a
+                          href={deployStatus.commitUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline"
+                        >
+                          View commit on GitHub
+                        </a>
+                      </p>
+                    )}
+                  </div>
+                ) : deployStatus.error ? (
+                  <div
+                    className="mb-6 p-4 rounded-lg"
+                    style={{
+                      backgroundColor: "rgba(239, 68, 68, 0.1)",
+                      border: "1px solid #ef4444",
+                    }}
+                  >
+                    <p className="font-semibold" style={{ color: "#ef4444" }}>
+                      Deployment Error
+                    </p>
+                    <p className="text-sm opacity-70 mt-1">{deployStatus.error}</p>
+                    <p className="text-sm opacity-70 mt-1">
+                      You can still copy the JSON below and add it manually.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    className="mb-6 p-4 rounded-lg flex items-center justify-between"
+                    style={{
+                      backgroundColor: "rgba(124, 58, 237, 0.1)",
+                      border: "1px solid var(--accent)",
+                    }}
+                  >
+                    <div>
+                      <p className="font-semibold" style={{ color: "var(--accent)" }}>
+                        Ready to Deploy
+                      </p>
+                      <p className="text-sm opacity-70 mt-1">
+                        Click the button to publish this answer page to MuseDungeon.com
+                      </p>
+                    </div>
+                    <button
+                      onClick={deployToMuseDungeon}
+                      disabled={deployStatus.deploying}
+                      className="px-6 py-3 rounded-lg font-semibold text-sm transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: "var(--accent)",
+                        color: "#fff",
+                      }}
+                    >
+                      {deployStatus.deploying ? "Deploying..." : "Deploy to MuseDungeon"}
+                    </button>
+                  </div>
+                )}
+
                 {/* Original Question Reference */}
                 <div
                   className="mb-6 p-4 rounded-lg text-sm"
@@ -317,13 +504,13 @@ export default function Home() {
                 {/* Linked Resources */}
                 <div className="mb-6">
                   <p className="text-xs uppercase tracking-wide opacity-50 mb-2">
-                    MuseDungeon Resources Used ({generatedPage.relevantPages.length}):
+                    MuseDungeon Resources Linked ({generatedPage.relevantPages.length}):
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {generatedPage.relevantPages.map((page, idx) => (
                       <a
                         key={idx}
-                        href={page.url}
+                        href={`https://musedungeon.com${page.url}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs hover:scale-105 transition-transform"
@@ -344,17 +531,56 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* TypeScript Data for Manual Copy */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs uppercase tracking-wide opacity-50">
+                      AnswerPage Data (for answers.ts):
+                    </p>
+                    <button
+                      onClick={() =>
+                        copyToClipboard(JSON.stringify(generatedPage.answerPage, null, 2), "JSON")
+                      }
+                      className="px-2 py-1 rounded text-xs font-medium"
+                      style={{ backgroundColor: "var(--accent)", color: "#fff" }}
+                    >
+                      Copy JSON
+                    </button>
+                  </div>
+                  <pre
+                    className="p-4 rounded-lg text-xs overflow-x-auto"
+                    style={{
+                      backgroundColor: "var(--card-bg)",
+                      border: "1px solid var(--border)",
+                      fontFamily: "var(--font-mono)",
+                      maxHeight: "200px",
+                    }}
+                  >
+                    {JSON.stringify(generatedPage.answerPage, null, 2)}
+                  </pre>
+                </div>
+
                 {/* Generated Markdown Preview */}
                 <div>
-                  <p className="text-xs uppercase tracking-wide opacity-50 mb-2">
-                    Generated Markdown:
-                  </p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs uppercase tracking-wide opacity-50">
+                      Content Preview (Markdown):
+                    </p>
+                    <button
+                      onClick={() => copyToClipboard(generatedPage.content, "Markdown")}
+                      className="px-2 py-1 rounded text-xs font-medium"
+                      style={{ backgroundColor: "var(--green)", color: "#fff" }}
+                    >
+                      Copy Markdown
+                    </button>
+                  </div>
                   <pre
                     className="p-4 rounded-lg text-sm overflow-x-auto whitespace-pre-wrap"
                     style={{
                       backgroundColor: "var(--card-bg)",
                       border: "1px solid var(--border)",
                       fontFamily: "var(--font-mono)",
+                      maxHeight: "400px",
                     }}
                   >
                     {generatedPage.content}
