@@ -104,12 +104,15 @@ async function getRedditToken(): Promise<string> {
     headers: {
       "Authorization": `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "MuseDungeonBot/1.0 (by /u/musedungeon)",
     },
     body: "grant_type=client_credentials",
   });
 
   if (!response.ok) {
-    throw new Error("Failed to get Reddit token");
+    const text = await response.text();
+    console.error("Reddit token error:", response.status, text);
+    throw new Error(`Failed to get Reddit token: ${response.status}`);
   }
 
   const data = await response.json();
